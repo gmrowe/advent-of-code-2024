@@ -1,6 +1,7 @@
 (ns day-05.main
   (:require
-   [clojure.string :as str]))
+   [clojure.string :as str]
+   [clojure.java.io :as io]))
 
 (defn parse-int-lines-by-delim
  [s delim]
@@ -8,41 +9,64 @@
       (mapv (fn [line] (str/split line delim)))
       (mapv (fn [strs] (mapv parse-long strs)))))
 
-(let
-  [input
-   "47|53
-97|13
-97|61
-97|47
-75|29
-61|13
-75|53
-29|13
-97|29
-53|29
-61|53
-97|53
-61|29
-47|13
-75|47
-97|75
-47|61
-75|61
-47|29
-75|13
-53|13
+(defn parse-input
+ [input]
+ (let [[rules pages] (str/split input #"\n\n")
+       add-rule (fn [rules [before after]]
+                  (-> rules
+                      (update-in [before :after] (fnil conj #{}) after)
+                      (update-in [after :before] (fnil conj #{}) before)))]
+   {:rules (reduce add-rule {} (parse-int-lines-by-delim rules #"\|"))
+    :pages (parse-int-lines-by-delim pages #",")}))
 
-75,47,61,53,29
-97,61,53,29,13
-75,29,13
-75,97,47,61,53
-61,13,29
-97,13,75,29,47
-"]
-  (let [[rules pages] (str/split input #"\n\n")]
-    {:rules (parse-int-lines-by-delim rules #"\|")
-     :pages (parse-int-lines-by-delim pages #",")}))
+(defn tails
+ [xs]
+ (take-while seq (iterate next xs)))
+
+(defn in-order?
+ [rules page]
+ (every?
+  (fn [[n & afters]]
+    (let [must-come-before? (get-in rules [n :before] #{})]
+      (not-any? must-come-before? afters)))
+  (tails page)))
+
+(defn middle-element
+ [xs]
+ (nth xs (/ (count xs) 2)))
+
+(defn part-01
+ [rdr]
+ (let [{:keys [rules pages]} (parse-input (slurp rdr))]
+   (transduce (comp (filter (fn [page] (in-order? rules page)))
+                    (map middle-element))
+              +
+              pages)))
+
+(defn repair
+ [rules pages]
+ (if-let [n (first pages)]
+   (let [more (rest pages)
+         must-come-before? (get-in rules [n :before] #{})
+         befores (filter must-come-before? more)
+         afters (remove must-come-before? more)]
+     (concat (repair rules befores) (cons n (repair rules afters))))
+   pages))
+
+(defn part-02
+ [rdr]
+ (let [{:keys [rules pages]} (parse-input (slurp rdr))]
+   (transduce (comp (remove (fn [pages] (in-order? rules pages)))
+                    (map (fn [pages] (repair rules pages)))
+                    (map middle-element))
+              +
+              pages)))
+
 
 (defn -main
- [& args]
- (println "Hello World!"))
+ [& _args]
+ (let [input-path "input/day_05_input.txt"]
+   (with-open [rdr (io/reader input-path)]
+     (printf "[day-05:part-01] %s%n" (part-01 rdr)))
+   (with-open [rdr (io/reader input-path)]
+     (printf "[day-05:part-02] %s%n" (part-02 rdr)))))
